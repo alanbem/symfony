@@ -35,14 +35,14 @@ interface ExtensionInterface
      *
      * @return string The XML namespace
      */
-    function getNamespace();
+    function getNamespaceUri();
 
     /**
-     * Returns the base path for the XSD files.
+     * Returns path to the XSD file.
      *
-     * @return string The XSD base path
+     * @return string The XSD file path
      */
-    function getXsdValidationBasePath();
+    function getXsdValidationFilePath();
 
     /**
      * Returns the recommended alias to use in XML.

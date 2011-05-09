@@ -45,11 +45,11 @@ abstract class Extension implements ExtensionInterface
     }
 
     /**
-     * Returns the base path for the XSD files.
+     * Returns path to the XSD file.
      *
-     * @return string The XSD base path
+     * @return string The XSD file path
      */
-    public function getXsdValidationBasePath()
+    public function getXsdValidationFilePath()
     {
         return false;
     }
@@ -59,9 +59,9 @@ abstract class Extension implements ExtensionInterface
      *
      * @return string The XML namespace
      */
-    public function getNamespace()
+    public function getNamespaceUri()
     {
-        return 'http://example.org/schema/dic/'.$this->getAlias();
+        return false;
     }
 
     /**

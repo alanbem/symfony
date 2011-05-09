@@ -589,18 +589,12 @@ class SecurityExtension extends Extension
         return $this->factories = $factories;
     }
 
-
     /**
-     * Returns the base path for the XSD files.
+     * Returns the namespace to be used for this extension (XML namespace).
      *
-     * @return string The XSD base path
+     * @return string The XML namespace
      */
-    public function getXsdValidationBasePath()
-    {
-        return __DIR__.'/../Resources/config/schema';
-    }
-
-    public function getNamespace()
+    public function getNamespaceUri()
     {
         return 'http://symfony.com/schema/dic/security';
     }

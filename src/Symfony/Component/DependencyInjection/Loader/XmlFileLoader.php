@@ -18,8 +18,10 @@ use Symfony\Component\DependencyInjection\Alias;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Extension\ExtensionInterface;
 use Symfony\Component\DependencyInjection\SimpleXMLElement;
 use Symfony\Component\Config\Resource\FileResource;
+use Symfony\Component\Config\FileLocator;
 
 /**
  * XmlFileLoader loads XML files service definitions.
@@ -28,6 +30,126 @@ use Symfony\Component\Config\Resource\FileResource;
  */
 class XmlFileLoader extends FileLoader
 {
+    private
+        $extensionsNamespaces = array(),
+        $schemaLocations = array();
+
+    /**
+     * Constructor.
+     *
+     * @param ContainerBuilder $container A ContainerBuilder instance
+     * @param FileLocator      $locator   A FileLocator instance
+     */
+    public function __construct(ContainerBuilder $container, FileLocator $locator)
+    {
+        parent::__construct($container, $locator);
+        $this->buildXmlSchemaLocations(); // all extensions are already registered.
+    }
+
+    /**
+     * Checks whether extensions is configurable via XML or not.
+     *
+     * @param ExtensionInterface $extension
+     * @return bool
+     */
+    public function isExtensionConfigurable(ExtensionInterface $extension)
+    {
+        return (boolean) ($extension->getNamespaceUri() !== false || $extension->getXsdValidationFilePath() !== false);
+    }
+
+    /**
+     * Extracts namespace URI from XSD Schema file if provided.
+     *
+     * @param ExtensionInterface
+     * @return string                    Namespace URI
+     *
+     * @throws \RuntimeException         When XSD file doesn't exist or load failed
+     * @throws \LogicException           When target namespace is not declared
+     */
+    private function discoverExtensionNamespaceUri(ExtensionInterface $extension)
+    {
+        if(\array_key_exists($extension->getAlias(), $this->extensionsNamespaces)) { // boost
+            return $this->extensionsNamespaces[$extension->getAlias()];
+        }
+
+        $file = $extension->getXsdValidationFilePath();
+
+        if(!\file_exists($file)) {
+            $error = 'XSD Schema file "%s" referenced by "%s" bundle does not exist.';
+            throw new \RuntimeException(sprintf($error, $file, $extension->getAlias()));
+        }
+
+        try {
+            $xsd = $this->createDomDocument($file);
+        } catch (\Exception $e) {
+            $error = 'Loading of XML Schema file "%s" for "%s" bundle failed.';
+            throw new \RuntimeException(sprintf($error, $extension->getAlias(), $file), null, $e);
+        }
+
+        if(!$xsd->documentElement->hasAttribute('targetNamespace')) {
+            $error = 'Unable to discover namespace URI for "%s" extension. targetNamespace declaration not found in "%s"';
+            throw new \LogicException(\sprintf($error, $extension->getAlias(), $file));
+        }
+
+        $namespace = $xsd->documentElement->getAttribute('targetNamespace');
+
+        $this->extensionsNamespaces[$extension->getAlias()] = $namespace;
+
+        return $namespace;
+    }
+
+    /**
+     * @param ExtensionInterface $extension
+     * @return string Namespace URI
+     */
+    private function getExtensionNamespaceUri(ExtensionInterface $extension)
+    {
+        if($extension->getNamespaceUri() !== false) {
+            return $extension->getNamespaceUri();
+        };
+
+        return $this->discoverExtensionNamespaceUri($extension);
+    }
+
+    /**
+     * @throws \RuntimeException When extension references a non-existent XSD file
+     */
+    private function buildXmlSchemaLocations()
+    {
+        $schemaLocations = array();
+        $schemaLocations['http://symfony.com/schema/dic/services'] = \str_replace('\\', '/', __DIR__.'/schema/dic/services/services-1.0.xsd');
+
+        foreach($this->container->getExtensions() as $extension) {
+            if($this->isExtensionConfigurable($extension) && $extension->getXsdValidationFilePath() !== false) {
+                $namespace = $this->getExtensionNamespaceUri($extension);
+                $file = $extension->getXsdValidationFilePath();
+                if (!file_exists($file)) {
+                    throw new \RuntimeException(sprintf('Extension "%s" references a non-existent XSD file "%s"', get_class($extension), $file));
+                }
+                $schemaLocations[$namespace] = \str_replace('\\', '/', $extension->getXsdValidationFilePath());
+            }
+        }
+
+        $this->schemaLocations = $schemaLocations;
+    }
+
+    /**
+     * Returns an extension by namespace.
+     *
+     * @param string $name A namespace
+     *
+     * @return ExtensionInterface|false An extension instance if exist, false otherwise
+     */
+    private function getExtension($namespace)
+    {
+        foreach($this->container->getExtensions() as $extension) {
+            if($this->isExtensionConfigurable($extension) && $namespace === $this->getExtensionNamespaceUri($extension)) {
+                return $extension;
+            }
+        }
+        return false;
+    }
+
     /**
      * Loads an XML file.
      *
@@ -200,13 +322,13 @@ class XmlFileLoader extends FileLoader
     }
 
     /**
-     * Parses a XML file.
+     * Creates DomDocument from XML file
      *
-     * @param string $file Path to a file
      * @throws \InvalidArgumentException When loading of XML file returns error
+     * @param  $file Path to a XML file
+     * @return \DOMDocument
      */
-    private function parseFile($file)
-    {
+    private function createDomDocument($file) {
         $dom = new \DOMDocument();
         libxml_use_internal_errors(true);
         if (!$dom->load($file, LIBXML_COMPACT)) {
@@ -215,6 +337,19 @@ class XmlFileLoader extends FileLoader
         $dom->validateOnParse = true;
         $dom->normalizeDocument();
         libxml_use_internal_errors(false);
+        return $dom;
+    }
+
+    /**
+     * Parses a XML file.
+     *
+     * @param string $file Path to a XML file
+     * @throws \InvalidArgumentException When loading of XML file returns error
+     * @return SimpleXMLElement
+     */
+    private function parseFile($file)
+    {
+        $dom = $this->createDomDocument($file);
         $this->validate($dom, $file);
 
         return simplexml_import_dom($dom, 'Symfony\\Component\\DependencyInjection\\SimpleXMLElement');
@@ -290,41 +425,19 @@ class XmlFileLoader extends FileLoader
     }
 
     /**
-     * Validates a documents XML schema.
+     * Validates XML
      *
      * @param \DOMDocument $dom
      * @param string $file
      * @return void
      *
-     * @throws \RuntimeException         When extension references a non-existent XSD file
      * @throws \InvalidArgumentException When xml doesn't validate its xsd schema
      */
     private function validateSchema(\DOMDocument $dom, $file)
     {
-        $schemaLocations = array('http://symfony.com/schema/dic/services' => str_replace('\\', '/', __DIR__.'/schema/dic/services/services-1.0.xsd'));
-
-        if ($element = $dom->documentElement->getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'schemaLocation')) {
-            $items = preg_split('/\s+/', $element);
-            for ($i = 0, $nb = count($items); $i < $nb; $i += 2) {
-                if (!$this->container->hasExtension($items[$i])) {
-                    continue;
-                }
-
-                if (($extension = $this->container->getExtension($items[$i])) && false !== $extension->getXsdValidationBasePath()) {
-                    $path = str_replace($extension->getNamespace(), str_replace('\\', '/', $extension->getXsdValidationBasePath()).'/', $items[$i + 1]);
-
-                    if (!file_exists($path)) {
-                        throw new \RuntimeException(sprintf('Extension "%s" references a non-existent XSD file "%s"', get_class($extension), $path));
-                    }
-
-                    $schemaLocations[$items[$i]] = $path;
-                }
-            }
-        }
-
         $tmpfiles = array();
         $imports = '';
-        foreach ($schemaLocations as $namespace => $location) {
+        foreach ($this->schemaLocations as $namespace => $location) {
             $parts = explode('/', $location);
             if (preg_match('#^phar://#i', $location)) {
                 $tmpfile = tempnam(sys_get_temp_dir(), 'sf2');
@@ -337,7 +450,7 @@ class XmlFileLoader extends FileLoader
             $drive = '\\' === DIRECTORY_SEPARATOR ? array_shift($parts).'/' : '';
             $location = 'file:///'.$drive.implode('/', array_map('rawurlencode', $parts));
 
-            $imports .= sprintf('  <xsd:import namespace="%s" schemaLocation="%s" />'."\n", $namespace, $location);
+            $imports .= sprintf('    <xsd:import namespace="%s" schemaLocation="%s" />'."\n", $namespace, $location);
         }
 
         $source = <<<EOF
@@ -365,7 +478,7 @@ EOF
     }
 
     /**
-     * Validates an extension.
+     * Validates extensions.
      *
      * @param \DOMDocument $dom
      * @param string $file
@@ -379,9 +492,8 @@ EOF
             if (!$node instanceof \DOMElement || 'http://symfony.com/schema/dic/services' === $node->namespaceURI) {
                 continue;
             }
-
             // can it be handled by an extension?
-            if (!$this->container->hasExtension($node->namespaceURI)) {
+            if(!$this->getExtension($node->namespaceURI)) {
                 throw new \InvalidArgumentException(sprintf('There is no extension able to load the configuration for "%s" (in %s).', $node->tagName, $file));
             }
         }
@@ -429,7 +541,7 @@ EOF
                 $values = array();
             }
 
-            $this->container->loadFromExtension($node->namespaceURI, $values);
+            $this->container->loadFromExtension($this->getExtension($node->namespaceURI)->getAlias(), $values);
         }
     }
 

@@ -111,22 +111,12 @@ class SwiftmailerExtension extends Extension
     }
 
     /**
-     * Returns the base path for the XSD files.
+     * Returns path to the XSD file.
      *
-     * @return string The XSD base path
+     * @return string The XSD file path
      */
-    public function getXsdValidationBasePath()
+    public function getXsdValidationFilePath()
     {
-        return __DIR__.'/../Resources/config/schema';
-    }
-
-    /**
-     * Returns the namespace to be used for this extension (XML namespace).
-     *
-     * @return string The XML namespace
-     */
-    public function getNamespace()
-    {
-        return 'http://symfony.com/schema/dic/swiftmailer';
+        return __DIR__ . '/../Resources/config/schema/swiftmailer-1.0.xsd';
     }
 }

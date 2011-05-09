@@ -27,7 +27,6 @@ use Symfony\Component\Config\Resource\ResourceInterface;
 class ContainerBuilder extends Container implements TaggedContainerInterface
 {
     private $extensions       = array();
-    private $extensionsByNs   = array();
     private $definitions      = array();
     private $aliases          = array();
     private $resources        = array();
@@ -43,16 +42,12 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
     public function registerExtension(ExtensionInterface $extension)
     {
         $this->extensions[$extension->getAlias()] = $extension;
-
-        if (false !== $extension->getNamespace()) {
-            $this->extensionsByNs[$extension->getNamespace()] = $extension;
-        }
     }
 
     /**
-     * Returns an extension by alias or namespace.
+     * Returns an extension by alias.
      *
-     * @param string $name An alias or a namespace
+     * @param string $name An alias
      *
      * @return ExtensionInterface An extension instance
      */
@@ -60,10 +55,6 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
     {
         if (isset($this->extensions[$name])) {
             return $this->extensions[$name];
-        }
-
-        if (isset($this->extensionsByNs[$name])) {
-            return $this->extensionsByNs[$name];
         }
 
         throw new \LogicException(sprintf('Container extension "%s" is not registered', $name));
@@ -87,7 +78,7 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
      */
     public function hasExtension($name)
     {
-        return isset($this->extensions[$name]) || isset($this->extensionsByNs[$name]);
+        return isset($this->extensions[$name]);
     }
 
     /**
@@ -130,7 +121,7 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
     /**
      * Loads the configuration for an extension.
      *
-     * @param string $extension The extension alias or namespace
+     * @param string $extension The extension alias
      * @param array  $values    An array of values that customizes the extension
      *
      * @return ContainerBuilder The current instance
@@ -141,13 +132,13 @@ class ContainerBuilder extends Container implements TaggedContainerInterface
             throw new \LogicException('Cannot load from an extension on a frozen container.');
         }
 
-        $namespace = $this->getExtension($extension)->getAlias();
+        $alias = $this->getExtension($extension)->getAlias();
 
-        if (!isset($this->extensionConfigs[$namespace])) {
-            $this->extensionConfigs[$namespace] = array();
+        if (!isset($this->extensionConfigs[$alias])) {
+            $this->extensionConfigs[$alias] = array();
         }
 
-        $this->extensionConfigs[$namespace][] = $this->getParameterBag()->resolveValue($values);
+        $this->extensionConfigs[$alias][] = $this->getParameterBag()->resolveValue($values);
 
         return $this;
     }

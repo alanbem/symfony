@@ -55,17 +55,12 @@ class WebProfilerExtension extends Extension
     }
 
     /**
-     * Returns the base path for the XSD files.
+     * Returns path to the XSD file.
      *
-     * @return string The XSD base path
+     * @return string The XSD file path
      */
-    public function getXsdValidationBasePath()
+    public function getXsdValidationFilePath()
     {
-        return __DIR__.'/../Resources/config/schema';
-    }
-
-    public function getNamespace()
-    {
-        return 'http://symfony.com/schema/dic/webprofiler';
+        return __DIR__ . '/../Resources/config/schema/webprofiler-1.0.xsd';
     }
 }
